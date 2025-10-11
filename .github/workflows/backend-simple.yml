@@ -61,7 +61,14 @@ jobs:
       - name: Install dependencies
         run: |
           cd Application-Code/backend
-          if [ -f package.json ]; then npm ci; fi
+          # Prefer clean install from lockfile for reproducible builds
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            echo "Lockfile found, running 'npm ci'"
+            npm ci
+          else
+            echo "No lockfile found, running 'npm install' and generating package-lock.json if needed"
+            npm install
+          fi
 
       - name: Run tests (if present)
         run: |
