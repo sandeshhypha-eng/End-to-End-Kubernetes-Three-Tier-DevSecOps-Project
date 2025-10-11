@@ -1,0 +1,122 @@
+name: CI/CD - Build and Deploy to Kubernetes
+
+on:
+  push:
+    branches: [ master, main ]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # IMAGE_TAG will be used to tag images pushed to the registry. You can change to github.run_number if preferred.
+  IMAGE_TAG: ${{ github.sha }}
+  # Default ECR registry. Override by setting the repository secret ECR_REGISTRY in your repo settings.
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Install AWS CLI v2
+      run: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install || true
+
+    - name: Ensure ECR repositories exist
+      run: |
+        # Create backend and frontend repositories if they don't exist yet (no-op if they do).
+        aws ecr create-repository --repository-name backend || true
+        aws ecr create-repository --repository-name frontend || true
+
+    - name: Log in to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Set up QEMU and buildx (for multi-arch builds)
+      uses: docker/setup-qemu-action@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build and push backend image
+      uses: docker/build-push-action@v4
+      with:
+        context: Application-Code/backend
+        file: Application-Code/backend/Dockerfile
+        push: true
+        tags: |
+          ${{ env.ECR_REGISTRY }}/backend:${{ env.IMAGE_TAG }}
+          ${{ env.ECR_REGISTRY }}/backend:latest
+
+    - name: Build and push frontend image
+      uses: docker/build-push-action@v4
+      with:
+        context: Application-Code/frontend
+        file: Application-Code/frontend/Dockerfile
+        push: true
+        tags: |
+          ${{ env.ECR_REGISTRY }}/frontend:${{ env.IMAGE_TAG }}
+          ${{ env.ECR_REGISTRY }}/frontend:latest
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.27.3'
+
+    - name: Configure kubeconfig from secret (if provided)
+      if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
+      run: |
+        echo "Writing KUBECONFIG from secret"
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 --decode > $HOME/.kube/config
+
+    - name: Configure kubeconfig via EKS (if KUBE_CONFIG_DATA not provided)
+      if: ${{ secrets.KUBE_CONFIG_DATA == '' }}
+      uses: aws-actions/eks-update-kubeconfig@v2
+      with:
+        cluster-name: ${{ secrets.EKS_CLUSTER_NAME }}
+        region: ${{ secrets.AWS_REGION }}
+
+    - name: Deploy to Kubernetes - update images and wait for rollout
+      run: |
+        NAMESPACE=three-tier
+        BACKEND_IMAGE=${{ env.ECR_REGISTRY }}/backend:${{ env.IMAGE_TAG }}
+        FRONTEND_IMAGE=${{ env.ECR_REGISTRY }}/frontend:${{ env.IMAGE_TAG }}
+
+        echo "Updating backend deployment 'api' with image: $BACKEND_IMAGE"
+        kubectl -n $NAMESPACE set image deployment/api api=$BACKEND_IMAGE --record
+        kubectl -n $NAMESPACE rollout status deployment/api --timeout=3m
+
+        echo "Updating frontend deployment 'frontend' with image: $FRONTEND_IMAGE"
+        kubectl -n $NAMESPACE set image deployment/frontend frontend=$FRONTEND_IMAGE --record
+        kubectl -n $NAMESPACE rollout status deployment/frontend --timeout=3m
+
+    - name: Verify deployments
+      run: |
+        kubectl -n three-tier get deployments -o wide
+
+    - name: Post-deploy notes
+      run: |
+        echo "Deployed backend -> ${{ env.ECR_REGISTRY }}/backend:${{ env.IMAGE_TAG }}"
+        echo "Deployed frontend -> ${{ env.ECR_REGISTRY }}/frontend:${{ env.IMAGE_TAG }}"
+
+# Notes:
+# - Required repository secrets:
+#   * AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+#   * ECR_REGISTRY (example: 407622020962.dkr.ecr.us-east-1.amazonaws.com)
+#   * EKS_CLUSTER_NAME (if using EKS to configure kubeconfig)
+#   OR provide KUBE_CONFIG_DATA (base64-encoded kubeconfig) and omit EKS_CLUSTER_NAME.
+# - This workflow updates the images for deployments named 'api' and 'frontend' in the 'three-tier' namespace.
+# - Adjust IMAGE_TAG strategy (git sha, semantic tag, or GitHub run number) as needed.
