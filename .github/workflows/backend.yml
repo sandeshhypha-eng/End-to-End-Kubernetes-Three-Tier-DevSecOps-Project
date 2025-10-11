@@ -71,10 +71,15 @@ jobs:
           ${{ secrets.ECR_REGISTRY }}/backend:${{ env.IMAGE_TAG }}
           ${{ secrets.ECR_REGISTRY }}/backend:latest
 
-    - name: Trivy vulnerability scan
-      uses: aquasecurity/trivy-action@v1
-      with:
-        image-ref: ${{ secrets.ECR_REGISTRY }}/backend:${{ env.IMAGE_TAG }}
+    - name: Trivy vulnerability scan (docker-run)
+      run: |
+        set -euo pipefail
+        IMAGE=${{ secrets.ECR_REGISTRY }}/backend:${{ env.IMAGE_TAG }}
+        echo "Scanning image: $IMAGE"
+        # Pull image locally so trivy can scan it
+        docker pull "$IMAGE" || true
+        # Run Trivy via its Docker image. Fail the step on HIGH or CRITICAL vulnerabilities.
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $HOME/.cache:/root/.cache aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE"
 
     - name: Ensure ECR repository exists
       run: |
