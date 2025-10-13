@@ -22,11 +22,11 @@ spec:
         role: frontend
     spec: 
       containers:
-      - name: frontend
-      image: priya720/frontend:3
-      imagePullPolicy: Always
-      env:
-        - name: REACT_APP_BACKEND_URL
-          value: "http://amanpathakdevops.study/api/tasks"
-      ports:
-      - containerPort: 3000
+        - name: frontend
+          image: priya720/frontend:3
+          imagePullPolicy: Always
+          env:
+            - name: REACT_APP_BACKEND_URL
+              value: "http://amanpathakdevops.study/api/tasks"
+          ports:
+            - containerPort: 3000
