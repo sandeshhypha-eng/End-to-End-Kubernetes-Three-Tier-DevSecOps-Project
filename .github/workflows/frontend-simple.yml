@@ -126,6 +126,12 @@ jobs:
       - name: Update kubeconfig for EKS
         run: |
           aws eks update-kubeconfig --name dev --region ap-south-1
+      - name: Ensure namespace exists
+        run: |
+          kubectl get namespace three-tier >/dev/null 2>&1 || kubectl create namespace three-tier
+      - name: Set kubectl context namespace
+        run: |
+          kubectl config set-context --current --namespace=three-tier
       - name: Deploy (apply manifests from repo)
         run: |
           set -euo pipefail
