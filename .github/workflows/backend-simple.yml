@@ -140,6 +140,10 @@ jobs:
         run: |
           aws eks update-kubeconfig --name dev --region ap-south-1
 
+      - name: Set kubectl context namespace
+        run: |
+          kubectl config set-context --current --namespace=three-tier
+
       - name: Deploy with Helm chart
         run: |
           set -euo pipefail

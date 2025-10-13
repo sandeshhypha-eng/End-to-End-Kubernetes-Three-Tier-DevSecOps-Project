@@ -111,6 +111,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker
     steps:
+      - uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -142,11 +144,18 @@ jobs:
           fi
           IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/frontend"
           IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
-          echo "Patching Kubernetes-Manifests-file/Frontend/deployment.yaml to use image: $IMAGE"
-          sed -E -i.bak "s|(^[[:space:]]*image:[[:space:]]*).*|\1${IMAGE}|" Kubernetes-Manifests-file/Frontend/deployment.yaml
-          echo "Applying frontend manifests and ingress"
+          echo "Applying frontend manifests"
           kubectl apply -f Kubernetes-Manifests-file/Frontend
-          kubectl apply -f Kubernetes-Manifests-file/ingress.yaml
+          echo "Applying ingress"
+          kubectl apply -f Kubernetes-Manifests-file/ingress.yaml || true
+          echo "Updating deployment 'frontend' image to ${IMAGE}' in namespace three-tier"
+          # Try the simple set-image first; if it fails, fallback to patching the deployment template
+          if kubectl -n three-tier set image deployment/frontend frontend="${IMAGE}" --record; then
+            echo "kubectl set image succeeded"
+          else
+            echo "kubectl set image failed; attempting kubectl patch fallback"
+            kubectl -n three-tier patch deployment frontend -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"${IMAGE}\"}]}}}}"
+          fi
           kubectl -n three-tier rollout status deployment/frontend --timeout=3m
 
 # Required secrets: DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, EKS_CLUSTER_NAME
