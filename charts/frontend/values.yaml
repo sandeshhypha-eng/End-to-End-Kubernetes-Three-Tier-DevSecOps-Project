@@ -1,0 +1,48 @@
+replicaCount: 1
+
+image:
+  repository: your-registry/frontend
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 3000
+
+resources:
+  limits:
+    cpu: 300m
+    memory: 256Mi
+  requests:
+    cpu: 150m
+    memory: 128Mi
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 3000
+  initialDelaySeconds: 2
+  periodSeconds: 5
+
+startupProbe:
+  httpGet:
+    path: /started
+    port: 3000
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  failureThreshold: 30
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 50
+
+namespace: three-tier

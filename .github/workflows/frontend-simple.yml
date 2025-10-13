@@ -1,9 +1,9 @@
-name: Backend - Simple CI
+name: Frontend - Simple CI
 
 on:
   push:
     paths:
-      - 'Application-Code/backend/**'
+      - 'Application-Code/frontend/**'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -39,7 +39,7 @@ jobs:
           if [ -n "${SONAR_TOKEN:-}" ]; then
             /opt/sonar-scanner/bin/sonar-scanner \
               -Dsonar.projectKey=${{ github.repository }} \
-              -Dsonar.sources=Application-Code/backend \
+              -Dsonar.sources=Application-Code/frontend \
               -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
               -Dsonar.login=${SONAR_TOKEN}
           else
@@ -49,31 +49,23 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: sonar
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '16'
 
-      - name: Install dependencies
+      - name: Install dependencies and build
         run: |
-          cd Application-Code/backend
-          # Prefer clean install from lockfile for reproducible builds
+          cd Application-Code/frontend
           if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-            echo "Lockfile found, running 'npm ci'"
             npm ci
           else
-            echo "No lockfile found, running 'npm install' and generating package-lock.json if needed"
             npm install
           fi
-
-      - name: Run tests (if present)
-        run: |
-          cd Application-Code/backend
-          if [ -f package.json ] && npm test --silent; then echo "tests ran"; else echo "no tests or tests failed"; fi
+          npm run build
 
   docker:
     name: Build, scan and push image
@@ -92,23 +84,23 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t backend:${{ env.IMAGE_TAG }} Application-Code/backend
+          docker build -t frontend:${{ env.IMAGE_TAG }} Application-Code/frontend
 
       - name: Scan image with Trivy
         run: |
-          IMAGE=backend:${{ env.IMAGE_TAG }}
+          IMAGE=frontend:${{ env.IMAGE_TAG }}
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE" || true
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
-          username: priya720
-          password: Sandy@100!
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       - name: Tag and push image to Docker Hub
         run: |
-          IMAGE=backend:${{ env.IMAGE_TAG }}
-          REPO=priya720/backend
+          IMAGE=frontend:${{ env.IMAGE_TAG }}
+          REPO=${{ secrets.DOCKERHUB_USERNAME }}/frontend
           docker tag "$IMAGE" "$REPO:${{ env.IMAGE_TAG }}"
           docker tag "$IMAGE" "$REPO:latest"
           docker push "$REPO:${{ env.IMAGE_TAG }}"
@@ -131,16 +123,10 @@ jobs:
         with:
           version: 'v1.27.3'
 
-      - name: Install Helm
-        uses: azure/setup-helm@v1
-        with:
-          version: 'v3.12.0'
-
       - name: Update kubeconfig for EKS
         run: |
           aws eks update-kubeconfig --name dev --region ap-south-1
-
-      - name: Deploy with Helm chart
+      - name: Deploy (apply manifests from repo)
         run: |
           set -euo pipefail
           if [ -n "${{ github.event.inputs.image_tag }}" ]; then
@@ -148,15 +134,13 @@ jobs:
           else
             IMAGE_TAG="${{ github.sha }}"
           fi
-          IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/backend"
-          echo "Deploying backend Helm chart with image: ${IMAGE_REPO}:${IMAGE_TAG}"
-          helm upgrade --install backend ./charts/backend \
-            --namespace three-tier --create-namespace \
-            --set image.repository=${IMAGE_REPO} \
-            --set image.tag=${IMAGE_TAG} \
-            --wait --timeout 3m
+          IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/frontend"
+          IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
+          echo "Patching Kubernetes-Manifests-file/Frontend/deployment.yaml to use image: $IMAGE"
+          sed -E -i.bak "s|(^[[:space:]]*image:[[:space:]]*).*|\1${IMAGE}|" Kubernetes-Manifests-file/Frontend/deployment.yaml
+          echo "Applying frontend manifests and ingress"
+          kubectl apply -f Kubernetes-Manifests-file/Frontend
+          kubectl apply -f Kubernetes-Manifests-file/ingress.yaml
+          kubectl -n three-tier rollout status deployment/frontend --timeout=3m
 
-# Notes:
-# - Required secrets if using Docker Hub for push: DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD
-# - Optional Sonar: SONAR_TOKEN and SONAR_HOST_URL
-# - This is a simple pipeline modeled after your example. Tell me if you want ECR instead of Docker Hub or to deploy to Kubernetes after push.
+# Required secrets: DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, EKS_CLUSTER_NAME

@@ -1,0 +1,4 @@
+Thank you for installing the backend chart.
+
+To see the deployed resources run:
+  kubectl -n {{ .Values.namespace }} get all -l app={{ include "backend.name" . }}
