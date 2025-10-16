@@ -36,7 +36,7 @@ spec:
             echo "mongodb is reachable"
       containers:
       - name: api
-        image: priya720/backend:3
+        image: priya720/backend
         imagePullPolicy: IfNotPresent
         env:
           - name: MONGO_CONN_STR
