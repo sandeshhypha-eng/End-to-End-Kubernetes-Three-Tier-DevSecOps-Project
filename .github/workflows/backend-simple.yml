@@ -156,11 +156,20 @@ jobs:
           fi
           IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/backend"
           echo "Deploying backend Helm chart with image: ${IMAGE_REPO}:${IMAGE_TAG}"
+          # Increase timeout and use atomic so failed upgrades roll back automatically.
+          # On failure dump pods/events to help debugging in CI logs.
           helm upgrade --install backend ./charts/backend \
             --namespace three-tier --create-namespace \
             --set image.repository=${IMAGE_REPO} \
             --set image.tag=${IMAGE_TAG} \
-            --wait --timeout 3m
+            --wait --atomic --timeout 10m || (
+              echo "Helm upgrade timed out or failed; dumping cluster state in namespace three-tier";
+              kubectl -n three-tier get pods -o wide || true;
+              kubectl -n three-tier describe pods || true;
+              kubectl -n three-tier get events --sort-by='.metadata.creationTimestamp' || true;
+              helm status backend || true;
+              exit 1
+            )
 
 # Notes:
 # - Required secrets if using Docker Hub for push: DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD
