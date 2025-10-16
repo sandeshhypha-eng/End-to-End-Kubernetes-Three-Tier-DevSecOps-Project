@@ -1,10 +1,10 @@
-apiVersion:Version: apps/v1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: Backend
+  name: api
   namespace: three-tier
   labels:
-    role: Backend
+    role: api
     env: demo
 spec:
   replicas: 2
@@ -15,11 +15,11 @@ spec:
       maxUnavailable: 25%
   selector:
     matchLabels:
-      role: Backend
+      role: api
   template:
     metadata:
       labels:
-        role: Backend
+        role: api
     spec:
       initContainers:
       - name: wait-for-mongo
@@ -35,9 +35,9 @@ spec:
             done
             echo "mongodb is reachable"
       containers:
-      - name: Backend
-        image: priya720/frontend:3        
-        imagePullPolicy: Always
+      - name: api
+        image: priya720/backend:3
+        imagePullPolicy: IfNotPresent
         env:
           - name: MONGO_CONN_STR
             value: mongodb://mongodb-svc:27017/todo?directConnection=true&authSource=admin
