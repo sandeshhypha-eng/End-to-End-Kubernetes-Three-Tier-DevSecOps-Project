@@ -40,7 +40,7 @@ spec:
         imagePullPolicy: IfNotPresent
         env:
           - name: MONGO_CONN_STR
-            value: mongodb://mongodb-svc:27017/todo?directConnection=true&authSource=admin
+            value: mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@mongodb-svc:27017/admin
           - name: MONGO_USERNAME
             valueFrom:
               secretKeyRef:
