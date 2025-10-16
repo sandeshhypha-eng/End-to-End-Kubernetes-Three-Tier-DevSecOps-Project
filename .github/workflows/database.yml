@@ -1,0 +1,168 @@
+name: Frontend - CI/CD Deploy
+
+on:
+  push:
+    paths:
+      - 'Application-Code/frontend/**'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Optional image tag to push (defaults to commit sha)'
+        required: false
+        default: ''
+
+jobs:
+  sonar:
+    name: Sonar scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install SonarScanner CLI
+        run: |
+          curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.1.3023-linux.zip
+          unzip sonar-scanner.zip
+          sudo mv sonar-scanner-4.8.1.3023-linux /opt/sonar-scanner
+          export PATH=$PATH:/opt/sonar-scanner/bin
+          /opt/sonar-scanner/bin/sonar-scanner --version
+
+      - name: Run SonarCloud Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "${SONAR_TOKEN:-}" ]; then
+            /opt/sonar-scanner/bin/sonar-scanner \
+              -Dsonar.projectKey=${{ github.repository }} \
+              -Dsonar.sources=Application-Code/frontend \
+              -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+              -Dsonar.login=${SONAR_TOKEN}
+          else
+            echo "SONAR_TOKEN not set — skipping Sonar scan"
+          fi
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: sonar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16'
+
+      - name: Install dependencies and build
+        run: |
+          cd Application-Code/frontend
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+          npm run build
+
+  docker:
+    name: Build, scan and push image
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set IMAGE_TAG
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "IMAGE_TAG=${{ github.event.inputs.image_tag }}" >> $GITHUB_ENV
+          else
+            echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+          fi
+
+      - name: Build Docker image
+        run: |
+          docker build -t frontend:${{ env.IMAGE_TAG }} Application-Code/frontend
+
+      - name: Scan image with Trivy
+        run: |
+          IMAGE=frontend:${{ env.IMAGE_TAG }}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE" || true
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Tag and push image to Docker Hub
+        run: |
+          IMAGE=frontend:${{ env.IMAGE_TAG }}
+          REPO=${{ secrets.DOCKERHUB_USERNAME }}/frontend
+          docker tag "$IMAGE" "$REPO:${{ env.IMAGE_TAG }}"
+          docker tag "$IMAGE" "$REPO:latest"
+          docker push "$REPO:${{ env.IMAGE_TAG }}"
+          docker push "$REPO:latest"
+
+  deploy:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set IMAGE_TAG for deploy
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "IMAGE_TAG=${{ github.event.inputs.image_tag }}" >> $GITHUB_ENV
+          else
+            echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.27.3'
+
+      - name: Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Ensure namespace exists
+        run: |
+          kubectl get namespace three-tier >/dev/null 2>&1 || kubectl create namespace three-tier
+
+      - name: Set kubectl context namespace
+        run: |
+          kubectl config set-context --current --namespace=three-tier
+
+      - name: Deploy (apply manifests from repo)
+        run: |
+          set -euo pipefail
+          IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/frontend"
+          IMAGE="${IMAGE_REPO}:${{ env.IMAGE_TAG }}"
+          echo "Applying frontend manifests"
+          kubectl apply -f Kubernetes-Manifests-file/Frontend
+          echo "Applying ingress"
+          kubectl apply -f Kubernetes-Manifests-file/ingress.yaml || true
+          echo "Updating deployment 'frontend' image to ${IMAGE}' in namespace three-tier"
+          # Try the simple set-image first; if it fails, fallback to patching the deployment template
+          if kubectl -n three-tier set image deployment/frontend frontend="${IMAGE}" --record; then
+            echo "kubectl set image succeeded"
+          else
+            echo "kubectl set image failed; attempting kubectl patch fallback"
+            kubectl -n three-tier patch deployment frontend -p '{"spec":{"template":{"spec":{"containers":[{"name":"frontend","image":"'"${IMAGE}"'"}]}}}}'
+          fi
+          kubectl -n three-tier rollout status deployment/frontend --timeout=3m
+
+# Required secrets: DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, EKS_CLUSTER_NAME
