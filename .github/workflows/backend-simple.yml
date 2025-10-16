@@ -157,11 +157,12 @@ jobs:
           kubectl apply -f Kubernetes-Manifests-file/Backend
           echo "Applying ingress"
           kubectl apply -f Kubernetes-Manifests-file/ingress.yaml || true
-          echo "Updating deployment 'Backend' image to ${IMAGE}' in namespace three-tier"
-          if kubectl -n three-tier set image deployment/Backend Backend="${IMAGE}" --record; then
+          echo "Updating deployment 'api' image to ${IMAGE} in namespace three-tier"
+          # Update the correct deployment and container name (both are 'api' in the manifests)
+          if kubectl -n three-tier set image deployment/api api="${IMAGE}"; then
             echo "kubectl set image succeeded"
           else
             echo "kubectl set image failed; attempting kubectl patch fallback"
-            kubectl -n three-tier patch deployment Backend -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"Backend\",\"image\":\"${IMAGE}\"}]}}}}"
+            kubectl -n three-tier patch deployment api -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"api\",\"image\":\"${IMAGE}\"}]}}}}"
           fi
-          kubectl -n three-tier rollout status deployment/Backend --timeout=3m
+          kubectl -n three-tier rollout status deployment/api --timeout=3m
