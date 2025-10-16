@@ -29,7 +29,7 @@ spec:
         imagePullPolicy: Always
         env:
           - name: MONGO_CONN_STR
-            value: mongodb://mongodb-svc:27017/todo?directConnection=true
+            value: mongodb://mongodb-svc:27017/todo?directConnection=true&authSource=admin
           - name: MONGO_USERNAME
             valueFrom:
               secretKeyRef:
@@ -40,6 +40,8 @@ spec:
               secretKeyRef:
                 name: mongo-sec
                 key: password
+          - name: USE_DB_AUTH
+            value: "true"
         ports:
         - containerPort: 3500
         livenessProbe:
@@ -52,7 +54,7 @@ spec:
           httpGet:
             path: /ready
             port: 3500
-          initialDelaySeconds: 5
+          initialDelaySeconds: 15
           periodSeconds: 5
           successThreshold: 1
         startupProbe:
