@@ -23,6 +23,19 @@ spec:
     spec:
       imagePullSecrets:
       - name: ecr-registry-secret
+      initContainers:
+      - name: wait-for-mongo
+        image: busybox:1.35
+        command:
+          - sh
+          - -c
+          - |
+            echo "Waiting for mongodb-svc:27017..."
+            until nc -z mongodb-svc 27017; do
+              echo "mongo not reachable yet; sleeping 2s"
+              sleep 2
+            done
+            echo "mongodb is reachable"
       containers:
       - name: api
         image: 407622020962.dkr.ecr.us-east-1.amazonaws.com/backend:1
@@ -44,6 +57,13 @@ spec:
             value: "true"
         ports:
         - containerPort: 3500
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "250m"
+            memory: "256Mi"
         livenessProbe:
           httpGet:
             path: /healthz
@@ -54,7 +74,7 @@ spec:
           httpGet:
             path: /ready
             port: 3500
-          initialDelaySeconds: 15
+          initialDelaySeconds: 20
           periodSeconds: 5
           successThreshold: 1
         startupProbe:
@@ -63,4 +83,4 @@ spec:
             port: 3500
           initialDelaySeconds: 0
           periodSeconds: 10
-          failureThreshold: 30
+          failureThreshold: 60

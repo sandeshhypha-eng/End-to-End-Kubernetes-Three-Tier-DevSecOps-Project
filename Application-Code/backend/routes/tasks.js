@@ -7,7 +7,8 @@ router.post("/", async (req, res) => {
         const task = await new Task(req.body).save();
         res.send(task);
     } catch (error) {
-        res.send(error);
+        console.error('Error creating task:', error);
+        res.status(500).json({ error: 'Could not create task' });
     }
 });
 
@@ -16,7 +17,8 @@ router.get("/", async (req, res) => {
         const tasks = await Task.find();
         res.send(tasks);
     } catch (error) {
-        res.send(error);
+        console.error('Error fetching tasks:', error);
+        res.status(500).json({ error: 'Could not fetch tasks' });
     }
 });
 
@@ -28,7 +30,8 @@ router.put("/:id", async (req, res) => {
         );
         res.send(task);
     } catch (error) {
-        res.send(error);
+        console.error('Error updating task:', error);
+        res.status(500).json({ error: 'Could not update task' });
     }
 });
 
@@ -37,7 +40,8 @@ router.delete("/:id", async (req, res) => {
         const task = await Task.findByIdAndDelete(req.params.id);
         res.send(task);
     } catch (error) {
-        res.send(error);
+        console.error('Error deleting task:', error);
+        res.status(500).json({ error: 'Could not delete task' });
     }
 });
 
