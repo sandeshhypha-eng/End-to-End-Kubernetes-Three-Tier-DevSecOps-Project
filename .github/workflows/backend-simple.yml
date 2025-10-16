@@ -60,7 +60,6 @@ jobs:
       - name: Install dependencies
         run: |
           cd Application-Code/backend
-          # Prefer clean install from lockfile for reproducible builds
           if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
             echo "Lockfile found, running 'npm ci'"
             npm ci
@@ -101,13 +100,13 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
-          username: priya720
-          password: Sandy@100!
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       - name: Tag and push image to Docker Hub
         run: |
           IMAGE=backend:${{ env.IMAGE_TAG }}
-          REPO=priya720/backend
+          REPO=${{ secrets.DOCKERHUB_USERNAME }}/backend
           docker tag "$IMAGE" "$REPO:${{ env.IMAGE_TAG }}"
           docker tag "$IMAGE" "$REPO:latest"
           docker push "$REPO:${{ env.IMAGE_TAG }}"
@@ -118,6 +117,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker
     steps:
+      - uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -125,28 +126,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
           version: 'v1.27.3'
 
-      - name: Install Helm
-        uses: azure/setup-helm@v1
-        with:
-          version: 'v3.12.0'
-
       - name: Update kubeconfig for EKS
         run: |
           aws eks update-kubeconfig --name dev --region ap-south-1
+
+      - name: Ensure namespace exists
+        run: |
+          kubectl get namespace three-tier >/dev/null 2>&1 || kubectl create namespace three-tier
 
       - name: Set kubectl context namespace
         run: |
           kubectl config set-context --current --namespace=three-tier
 
-      - name: Deploy with Helm chart
+      - name: Deploy (apply manifests from repo)
         run: |
           set -euo pipefail
           if [ -n "${{ github.event.inputs.image_tag }}" ]; then
@@ -155,23 +152,16 @@ jobs:
             IMAGE_TAG="${{ github.sha }}"
           fi
           IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/backend"
-          echo "Deploying backend Helm chart with image: ${IMAGE_REPO}:${IMAGE_TAG}"
-          # Increase timeout and use atomic so failed upgrades roll back automatically.
-          # On failure dump pods/events to help debugging in CI logs.
-          helm upgrade --install backend ./charts/backend \
-            --namespace three-tier --create-namespace \
-            --set image.repository=${IMAGE_REPO} \
-            --set image.tag=${IMAGE_TAG} \
-            --wait --atomic --timeout 10m || (
-              echo "Helm upgrade timed out or failed; dumping cluster state in namespace three-tier";
-              kubectl -n three-tier get pods -o wide || true;
-              kubectl -n three-tier describe pods || true;
-              kubectl -n three-tier get events --sort-by='.metadata.creationTimestamp' || true;
-              helm status backend || true;
-              exit 1
-            )
-
-# Notes:
-# - Required secrets if using Docker Hub for push: DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD
-# - Optional Sonar: SONAR_TOKEN and SONAR_HOST_URL
-# - This is a simple pipeline modeled after your example. Tell me if you want ECR instead of Docker Hub or to deploy to Kubernetes after push.
+          IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
+          echo "Applying Backend manifests"
+          kubectl apply -f Kubernetes-Manifests-file/Backend
+          echo "Applying ingress"
+          kubectl apply -f Kubernetes-Manifests-file/ingress.yaml || true
+          echo "Updating deployment 'Backend' image to ${IMAGE}' in namespace three-tier"
+          if kubectl -n three-tier set image deployment/Backend Backend="${IMAGE}" --record; then
+            echo "kubectl set image succeeded"
+          else
+            echo "kubectl set image failed; attempting kubectl patch fallback"
+            kubectl -n three-tier patch deployment Backend -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"Backend\",\"image\":\"${IMAGE}\"}]}}}}"
+          fi
+          kubectl -n three-tier rollout status deployment/Backend --timeout=3m
