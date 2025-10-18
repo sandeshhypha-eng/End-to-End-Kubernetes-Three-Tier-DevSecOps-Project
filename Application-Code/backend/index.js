@@ -2,12 +2,12 @@ const tasks = require("./routes/tasks");
 const connectWithRetry = require("./db");
 const cors = require("cors");
 const express = require("express");
-const app = express();
 const mongoose = require("mongoose");
 
+const app = express();
 let isDbConnected = false;
 
-// Connect to MongoDB
+// Connect to MongoDB before starting server
 (async () => {
   try {
     await connectWithRetry();
@@ -16,7 +16,6 @@ let isDbConnected = false;
     console.error("MongoDB initial connection failed:", err.message);
   }
 
-  // Listen only after attempting DB connection
   const port = process.env.PORT || 3500;
   app.listen(port, () => console.log(`Listening on port ${port}...`));
 })();
@@ -34,6 +33,7 @@ app.get("/ready", (req, res) => {
   if (mongoose.connection.readyState === 1 && isDbConnected) {
     res.status(200).send("Ready");
   } else {
+    console.log(`Database readyState: ${mongoose.connection.readyState}`);
     res.status(503).send("Not Ready");
   }
 });
@@ -43,4 +43,5 @@ app.get("/started", (req, res) => {
   res.status(200).send("Started");
 });
 
+// API routes
 app.use("/api/tasks", tasks);
