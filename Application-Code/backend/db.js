@@ -11,12 +11,12 @@ module.exports = async function connectWithRetry(options = {}) {
     maxAttempts = 20,
     initialDelayMs = 2000,
     multiplier = 1.5,
-    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem', // default path in container
+    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem', // path from volumeMount
   } = options;
 
   const username = process.env.MONGO_USERNAME;
   const password = process.env.MONGO_PASSWORD;
-  const host = process.env.MONGO_HOST; // only host + port + query string
+  const host = process.env.MONGO_HOST; // e.g., docdb-xxxx.cluster-xxxx.ap-south-1.docdb.amazonaws.com:27017/admin?tls=true&replicaSet=rs0
 
   if (!host) {
     console.error('❌ MONGO_HOST not set');
@@ -27,13 +27,12 @@ module.exports = async function connectWithRetry(options = {}) {
     return;
   }
 
-  // Build the connection string without certificate
   const connStr = `mongodb://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}`;
 
   let sslCA;
   try {
     sslCA = fs.readFileSync(path.resolve(caFilePath));
-    console.log(`✅ Loaded CA file from ${caFilePath}`);
+    console.log('✅ Loaded CA file from', caFilePath);
   } catch (err) {
     console.error(`❌ Failed to read CA file at ${caFilePath}:`, err.message);
     return;
@@ -43,7 +42,7 @@ module.exports = async function connectWithRetry(options = {}) {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     ssl: true,
-    sslCA: [sslCA], // pass CA as array
+    sslCA: [sslCA],
   };
 
   let attempt = 0;
@@ -57,22 +56,10 @@ module.exports = async function connectWithRetry(options = {}) {
       return;
     } catch (err) {
       console.error(`MongoDB connect attempt ${attempt}/${maxAttempts} failed:`, err.message);
-      if (attempt >= maxAttempts) {
-        console.error('⚠️ Max attempts reached; will continue retrying in background...');
-        while (true) {
-          try {
-            await wait(delay);
-            await mongoose.connect(connStr, connectionParams);
-            console.log('✅ Connected to DocumentDB (after extended retries).');
-            return;
-          } catch (err2) {
-            console.error('Extended retry failed:', err2.message);
-            delay = Math.min(60_000, Math.floor(delay * multiplier));
-          }
-        }
-      }
       await wait(delay);
       delay = Math.min(60_000, Math.floor(delay * multiplier));
     }
   }
+
+  console.error('⚠️ Could not connect to DocumentDB after maximum attempts');
 };
