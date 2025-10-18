@@ -40,12 +40,12 @@ module.exports = async function connectWithRetry(options = {}) {
     return;
   }
 
-  const connectionParams = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    ssl: true,
-    sslCA,
-  };
+const connectionParams = {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  ssl: true,
+  sslCA: [sslCA], // <- wrap in array
+};
 
   let attempt = 0;
   let delay = initialDelayMs;
