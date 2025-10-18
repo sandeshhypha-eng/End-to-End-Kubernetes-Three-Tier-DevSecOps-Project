@@ -1,46 +1,46 @@
 const tasks = require("./routes/tasks");
-const connection = require("./db");
+const connectWithRetry = require("./db");
 const cors = require("cors");
 const express = require("express");
 const app = express();
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-connection();
+let isDbConnected = false;
+
+// Connect to MongoDB
+(async () => {
+  try {
+    await connectWithRetry();
+    isDbConnected = true;
+  } catch (err) {
+    console.error("MongoDB initial connection failed:", err.message);
+  }
+
+  // Listen only after attempting DB connection
+  const port = process.env.PORT || 3500;
+  app.listen(port, () => console.log(`Listening on port ${port}...`));
+})();
 
 app.use(express.json());
 app.use(cors());
 
-// Health check endpoints
-
-// Basic health check to see if the server is running
-app.get('/healthz', (req, res) => {
-    res.status(200).send('Healthy');
+// Basic health check
+app.get("/healthz", (req, res) => {
+  res.status(200).send("Healthy");
 });
 
-let lastReadyState = null;  
-// Readiness check to see if the server is ready to serve requests
-app.get('/ready', (req, res) => {
-    // Here you can add logic to check database connection or other dependencies
-    const isDbConnected = mongoose.connection.readyState === 1;
-    if (isDbConnected !== lastReadyState) {
-        console.log(`Database readyState: ${mongoose.connection.readyState}`);
-        lastReadyState = isDbConnected;
-    }
-    
-    if (isDbConnected) {
-        res.status(200).send('Ready');
-    } else {
-        res.status(503).send('Not Ready');
-    }
+// Readiness probe: only ready if DB is connected
+app.get("/ready", (req, res) => {
+  if (mongoose.connection.readyState === 1 && isDbConnected) {
+    res.status(200).send("Ready");
+  } else {
+    res.status(503).send("Not Ready");
+  }
 });
 
-// Startup check to ensure the server has started correctly
-app.get('/started', (req, res) => {
-    // Assuming the server has started correctly if this endpoint is reachable
-    res.status(200).send('Started');
+// Startup check
+app.get("/started", (req, res) => {
+  res.status(200).send("Started");
 });
 
 app.use("/api/tasks", tasks);
-
-const port = process.env.PORT || 3500;
-app.listen(port, () => console.log(`Listening on port ${port}...`));

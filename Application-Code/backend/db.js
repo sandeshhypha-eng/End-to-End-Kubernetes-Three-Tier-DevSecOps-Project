@@ -16,7 +16,7 @@ module.exports = async function connectWithRetry(options = {}) {
 
   const username = process.env.MONGO_USERNAME;
   const password = process.env.MONGO_PASSWORD;
-  const host = process.env.MONGO_HOST;   // <- use separate env var for host
+  const host = process.env.MONGO_HOST; // full host with port and query params
 
   if (!host) {
     console.error('❌ MONGO_HOST not set');
@@ -27,7 +27,7 @@ module.exports = async function connectWithRetry(options = {}) {
     return;
   }
 
-  const connStr = `mongodb://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:27017/admin?tls=true&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false&authMechanism=SCRAM-SHA-1`;
+  const connStr = `mongodb://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}`;
 
   let sslCA;
   try {
