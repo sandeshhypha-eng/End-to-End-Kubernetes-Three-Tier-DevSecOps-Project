@@ -22,39 +22,38 @@ spec:
         role: api
     spec:
       initContainers:
-      - name: wait-for-mongo
-        image: busybox:1.35
+      - name: wait-for-docdb
+        image: busybox
         command:
           - sh
           - -c
           - |
-            echo "Waiting for mongodb-svc:27017..."
-            until nc -z mongodb-svc 27017; do
-              echo "mongo not reachable yet; sleeping 2s"
+            until nc -z -v -w5 docdb-2025-10-18-10-13-30.cluster-clg2gusui41h.ap-south-1.docdb.amazonaws.com 27017
+            do
+              echo "DocDB not reachable yet; sleeping 2s"
               sleep 2
             done
-            echo "mongodb is reachable"
       containers:
       - name: api
         image: priya720/backend
         imagePullPolicy: IfNotPresent
         env:
           - name: MONGO_CONN_STR
-            value: mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@mongodb-svc:27017/admin
+            value: "mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@docdb-2025-10-18-10-13-30.cluster-clg2gusui41h.ap-south-1.docdb.amazonaws.com:27017/admin?tls=true&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false&authMechanism=SCRAM-SHA-1"
           - name: MONGO_USERNAME
             valueFrom:
               secretKeyRef:
-                name: mongo-sec
+                name: docdb-sec
                 key: username
           - name: MONGO_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: mongo-sec
+                name: docdb-sec
                 key: password
           - name: USE_DB_AUTH
             value: "true"
         ports:
-        - containerPort: 3500
+          - containerPort: 3500
         resources:
           requests:
             cpu: "100m"
@@ -62,19 +61,21 @@ spec:
           limits:
             cpu: "250m"
             memory: "256Mi"
+        volumeMounts:
+          - name: docdb-ca
+            mountPath: /etc/ssl/certs
+            readOnly: true
         livenessProbe:
           httpGet:
             path: /healthz
             port: 3500
-          initialDelaySeconds: 2
-          periodSeconds: 5
+          initialDelaySeconds: 10
         readinessProbe:
           httpGet:
             path: /ready
             port: 3500
           initialDelaySeconds: 20
           periodSeconds: 5
-          successThreshold: 1
         startupProbe:
           httpGet:
             path: /started
@@ -82,3 +83,7 @@ spec:
           initialDelaySeconds: 0
           periodSeconds: 10
           failureThreshold: 60
+      volumes:
+        - name: docdb-ca
+          configMap:
+            name: docdb-ca-config

@@ -1,63 +1,79 @@
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 
 function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 module.exports = async function connectWithRetry(options = {}) {
-    const {
-        maxAttempts = 20,
-        initialDelayMs = 2000,
-        multiplier = 1.5,
-    } = options;
+  const {
+    maxAttempts = 20,
+    initialDelayMs = 2000,
+    multiplier = 1.5,
+    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem', // default path
+  } = options;
 
-    const connStr = process.env.MONGO_CONN_STR;
-    if (!connStr) {
-        console.error('MONGO_CONN_STR not set');
-        return;
-    }
+  const username = process.env.MONGO_USERNAME;
+  const password = process.env.MONGO_PASSWORD;
+  const hostConnStr = process.env.MONGO_CONN_STR;
 
-    const connectionParams = {
-        // Mongoose v6 ignores these but harmless to include
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-    };
+  if (!hostConnStr) {
+    console.error('❌ MONGO_CONN_STR not set');
+    return;
+  }
+  if (!username || !password) {
+    console.error('❌ MONGO_USERNAME or MONGO_PASSWORD not set');
+    return;
+  }
 
-    const useDBAuth = !!process.env.USE_DB_AUTH && process.env.USE_DB_AUTH !== 'false';
-    if (useDBAuth) {
-        connectionParams.user = process.env.MONGO_USERNAME;
-        connectionParams.pass = process.env.MONGO_PASSWORD;
-    }
+  const connStr = hostConnStr.replace(
+    /^mongodb:\/\//,
+    `mongodb://${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
+  );
 
-    let attempt = 0;
-    let delay = initialDelayMs;
-    while (attempt < maxAttempts) {
-        attempt += 1;
-        try {
-            await mongoose.connect(connStr, connectionParams);
-            console.log('Connected to database.');
-            return;
-        } catch (err) {
-            console.error(`MongoDB connect attempt ${attempt}/${maxAttempts} failed:`, err && err.message ? err.message : err);
-            if (attempt >= maxAttempts) {
-                console.error('Max MongoDB connection attempts reached; will keep trying in background.');
-                // continue to try indefinitely but with long delays to avoid hot loops
-                // fallback: try forever with a long delay
-                while (true) {
-                    try {
-                        await wait(delay);
-                        await mongoose.connect(connStr, connectionParams);
-                        console.log('Connected to database (after extended retries).');
-                        return;
-                    } catch (err2) {
-                        console.error('Extended retry failed:', err2 && err2.message ? err2.message : err2);
-                        // increase delay but cap it
-                        delay = Math.min(60_000, Math.floor(delay * multiplier));
-                    }
-                }
-            }
+  let sslCA;
+  try {
+    sslCA = fs.readFileSync(path.resolve(caFilePath));
+  } catch (err) {
+    console.error(`❌ Failed to read CA file at ${caFilePath}:`, err.message);
+    return;
+  }
+
+  const connectionParams = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    ssl: true,
+    sslCA,
+  };
+
+  let attempt = 0;
+  let delay = initialDelayMs;
+
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    try {
+      await mongoose.connect(connStr, connectionParams);
+      console.log('✅ Connected to DocumentDB.');
+      return;
+    } catch (err) {
+      console.error(`MongoDB connect attempt ${attempt}/${maxAttempts} failed:`, err.message);
+      if (attempt >= maxAttempts) {
+        console.error('⚠️ Max attempts reached; will continue retrying in background...');
+        while (true) {
+          try {
             await wait(delay);
+            await mongoose.connect(connStr, connectionParams);
+            console.log('✅ Connected to DocumentDB (after extended retries).');
+            return;
+          } catch (err2) {
+            console.error('Extended retry failed:', err2.message);
             delay = Math.min(60_000, Math.floor(delay * multiplier));
+          }
         }
+      }
+      await wait(delay);
+      delay = Math.min(60_000, Math.floor(delay * multiplier));
     }
+  }
 };
