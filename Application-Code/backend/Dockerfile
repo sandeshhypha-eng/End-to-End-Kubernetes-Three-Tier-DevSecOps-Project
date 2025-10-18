@@ -1,9 +1,6 @@
-FROM node:20-bullseye
-
+FROM node:14
 WORKDIR /usr/src/app
 COPY package*.json ./
 RUN npm install
 COPY . .
-
-EXPOSE 3500
 CMD ["node", "index.js"]

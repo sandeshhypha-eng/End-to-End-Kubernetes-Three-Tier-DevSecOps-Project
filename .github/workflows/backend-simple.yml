@@ -101,7 +101,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
-          
+
       - name: Push image to Docker Hub
         run: |
           IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/backend"
@@ -154,8 +154,6 @@ jobs:
           IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
 
           echo "Applying deployment and service manifests"
-          kubectl apply -f Kubernetes-Manifests-file/Backend/secrets.yaml
-          kubectl apply -f Kubernetes-Manifests-file/Backend/db-ca.yaml
           kubectl apply -f Kubernetes-Manifests-file/Backend/deployment.yaml
           kubectl apply -f Kubernetes-Manifests-file/Backend/service.yaml
 
