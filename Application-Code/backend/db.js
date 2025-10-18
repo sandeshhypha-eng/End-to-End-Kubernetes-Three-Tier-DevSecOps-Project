@@ -11,12 +11,12 @@ module.exports = async function connectWithRetry(options = {}) {
     maxAttempts = 20,
     initialDelayMs = 2000,
     multiplier = 1.5,
-    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem', // path from volumeMount
+    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem',
   } = options;
 
   const username = process.env.MONGO_USERNAME;
   const password = process.env.MONGO_PASSWORD;
-  const host = process.env.MONGO_HOST; // e.g., docdb-xxxx.cluster-xxxx.ap-south-1.docdb.amazonaws.com:27017/admin?tls=true&replicaSet=rs0
+  const host = process.env.MONGO_HOST;
 
   if (!host) {
     console.error('❌ MONGO_HOST not set');
