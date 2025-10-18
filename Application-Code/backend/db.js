@@ -16,10 +16,10 @@ module.exports = async function connectWithRetry(options = {}) {
 
   const username = process.env.MONGO_USERNAME;
   const password = process.env.MONGO_PASSWORD;
-  const hostConnStr = process.env.MONGO_CONN_STR;
+  const host = process.env.MONGO_HOST;   // <- use separate env var for host
 
-  if (!hostConnStr) {
-    console.error('❌ MONGO_CONN_STR not set');
+  if (!host) {
+    console.error('❌ MONGO_HOST not set');
     return;
   }
   if (!username || !password) {
@@ -27,10 +27,7 @@ module.exports = async function connectWithRetry(options = {}) {
     return;
   }
 
-  const connStr = hostConnStr.replace(
-    /^mongodb:\/\//,
-    `mongodb://${encodeURIComponent(username)}:${encodeURIComponent(password)}@`
-  );
+  const connStr = `mongodb://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:27017/admin?tls=true&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false&authMechanism=SCRAM-SHA-1`;
 
   let sslCA;
   try {
@@ -40,12 +37,12 @@ module.exports = async function connectWithRetry(options = {}) {
     return;
   }
 
-const connectionParams = {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  ssl: true,
-  sslCA: [sslCA], // <- wrap in array
-};
+  const connectionParams = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    ssl: true,
+    sslCA: [sslCA], // wrap in array
+  };
 
   let attempt = 0;
   let delay = initialDelayMs;
