@@ -141,19 +141,20 @@ jobs:
         run: |
           kubectl config set-context --current --namespace=three-tier
 
-      - name: Apply secrets and ConfigMap
-        run: |
-          echo "Applying secrets and DB CA ConfigMap"
-          kubectl apply -f Kubernetes-Manifests-file/Backend/secrets.yaml
-          kubectl apply -f Kubernetes-Manifests-file/Backend/db-ca.yaml
-
       - name: Deploy backend manifests
         run: |
-          IMAGE_TAG="${{ github.event.inputs.image_tag || github.sha }}"
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+          else
+            IMAGE_TAG="${{ github.sha }}"
+          fi
+
           IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/backend"
           IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
 
           echo "Applying deployment and service manifests"
+          kubectl apply -f Kubernetes-Manifests-file/Backend/secrets.yaml
+          kubectl apply -f Kubernetes-Manifests-file/Backend/db-ca.yaml
           kubectl apply -f Kubernetes-Manifests-file/Backend/deployment.yaml
           kubectl apply -f Kubernetes-Manifests-file/Backend/service.yaml
 
@@ -167,7 +168,3 @@ jobs:
 
           echo "Waiting for rollout to complete"
           kubectl -n three-tier rollout status deployment/api --timeout=5m
-
-      - name: Apply ingress (optional)
-        run: |
-          kubectl apply -f Kubernetes-Manifests-file/ingress.yaml || true
