@@ -16,14 +16,10 @@ module.exports = async function connectWithRetry(options = {}) {
 
   const username = process.env.MONGO_USERNAME;
   const password = process.env.MONGO_PASSWORD;
-  const host = process.env.MONGO_HOST;
+  const host = process.env.MONGO_HOST; // only host:port/db, no query params
 
-  if (!host) {
-    console.error('❌ MONGO_HOST not set');
-    return;
-  }
-  if (!username || !password) {
-    console.error('❌ MONGO_USERNAME or MONGO_PASSWORD not set');
+  if (!host || !username || !password) {
+    console.error('❌ Missing required MongoDB environment variables');
     return;
   }
 
@@ -43,6 +39,10 @@ module.exports = async function connectWithRetry(options = {}) {
     useUnifiedTopology: true,
     ssl: true,
     sslCA: [sslCA],
+    replicaSet: 'rs0',
+    readPreference: 'secondaryPreferred',
+    retryWrites: false,
+    authMechanism: 'SCRAM-SHA-1',
   };
 
   let attempt = 0;
