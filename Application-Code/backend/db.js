@@ -11,12 +11,12 @@ module.exports = async function connectWithRetry(options = {}) {
     maxAttempts = 20,
     initialDelayMs = 2000,
     multiplier = 1.5,
-    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem', // path from volumeMount
+    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem',
   } = options;
 
   const username = process.env.MONGO_USERNAME;
   const password = process.env.MONGO_PASSWORD;
-  const host = process.env.MONGO_HOST; // full host with port + query params
+  const host = process.env.MONGO_HOST;
 
   if (!host) {
     console.error('❌ MONGO_HOST not set');
@@ -34,7 +34,7 @@ module.exports = async function connectWithRetry(options = {}) {
     sslCA = fs.readFileSync(path.resolve(caFilePath));
     console.log('✅ Loaded CA file from', caFilePath);
   } catch (err) {
-    console.error(`❌ Failed to read CA file at ${caFilePath}:`, err.message);
+    console.error(`❌ Failed to read CA file:`, err.message);
     return;
   }
 
@@ -49,7 +49,7 @@ module.exports = async function connectWithRetry(options = {}) {
   let delay = initialDelayMs;
 
   while (attempt < maxAttempts) {
-    attempt += 1;
+    attempt++;
     try {
       await mongoose.connect(connStr, connectionParams);
       console.log('✅ Connected to DocumentDB.');
@@ -57,7 +57,7 @@ module.exports = async function connectWithRetry(options = {}) {
     } catch (err) {
       console.error(`MongoDB connect attempt ${attempt}/${maxAttempts} failed:`, err.message);
       await wait(delay);
-      delay = Math.min(60_000, Math.floor(delay * multiplier));
+      delay = Math.min(60000, Math.floor(delay * multiplier));
     }
   }
 
