@@ -40,7 +40,7 @@ jobs:
             /opt/sonar-scanner/bin/sonar-scanner \
               -Dsonar.projectKey=${{ github.repository }} \
               -Dsonar.sources=Application-Code/backend \
-              -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+              -Dsonar.host.url="${{ secrets.SONAR_HOST_URL }}" \
               -Dsonar.login=${SONAR_TOKEN}
           else
             echo "SONAR_TOKEN not set — skipping Sonar scan"
@@ -88,11 +88,11 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t backend:${{ env.IMAGE_TAG }} Application-Code/backend
+          docker build -t backend:${IMAGE_TAG} Application-Code/backend
 
       - name: Scan image with Trivy
         run: |
-          IMAGE=backend:${{ env.IMAGE_TAG }}
+          IMAGE=backend:${IMAGE_TAG}
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE" || true
 
       - name: Log in to Docker Hub
@@ -100,15 +100,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
-
-      - name: Tag and push image to Docker Hub
-        run: |
-          IMAGE=backend:${{ env.IMAGE_TAG }}
-          REPO=${{ secrets.DOCKERHUB_USERNAME }}/backend
-          docker tag "$IMAGE" "$REPO:${{ env.IMAGE_TAG }}"
-          docker tag "$IMAGE" "$REPO:latest"
-          docker push "$REPO:${{ env.IMAGE_TAG }}"
-          docker push "$REPO:latest"
 
   deploy:
     name: Deploy to EKS
