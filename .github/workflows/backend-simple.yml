@@ -85,6 +85,7 @@ jobs:
             echo "IMAGE_TAG=${{ github.event.inputs.image_tag }}" >> $GITHUB_ENV
           else
             echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+          fi
 
       - name: Build Docker image
         run: |
