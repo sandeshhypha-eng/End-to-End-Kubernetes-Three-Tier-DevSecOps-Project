@@ -11,12 +11,12 @@ module.exports = async function connectWithRetry(options = {}) {
     maxAttempts = 20,
     initialDelayMs = 2000,
     multiplier = 1.5,
-    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem', // default CA file
+    caFilePath = '/etc/ssl/certs/rds-combined-ca-bundle.pem', // default path in container
   } = options;
 
   const username = process.env.MONGO_USERNAME;
   const password = process.env.MONGO_PASSWORD;
-  const host = process.env.MONGO_HOST; // full host with port and query params
+  const host = process.env.MONGO_HOST; // only host + port + query string
 
   if (!host) {
     console.error('❌ MONGO_HOST not set');
@@ -27,8 +27,8 @@ module.exports = async function connectWithRetry(options = {}) {
     return;
   }
 
+  // Build the connection string without certificate
   const connStr = `mongodb://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}`;
-  console.log(`🔗 Attempting to connect to MongoDB at ${host}`);
 
   let sslCA;
   try {
@@ -43,7 +43,7 @@ module.exports = async function connectWithRetry(options = {}) {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     ssl: true,
-    sslCA: [sslCA], // must be an array
+    sslCA: [sslCA], // pass CA as array
   };
 
   let attempt = 0;
@@ -56,7 +56,7 @@ module.exports = async function connectWithRetry(options = {}) {
       console.log('✅ Connected to DocumentDB.');
       return;
     } catch (err) {
-      console.error(`⚠️ MongoDB connect attempt ${attempt}/${maxAttempts} failed:`, err.message);
+      console.error(`MongoDB connect attempt ${attempt}/${maxAttempts} failed:`, err.message);
       if (attempt >= maxAttempts) {
         console.error('⚠️ Max attempts reached; will continue retrying in background...');
         while (true) {
