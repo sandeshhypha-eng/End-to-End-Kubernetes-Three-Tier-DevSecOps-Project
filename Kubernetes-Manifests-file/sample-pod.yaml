@@ -1,0 +1,1011 @@
+# Sample Kubernetes Pod Manifest with Detailed Explanations
+# This file demonstrates a complete pod configuration with various resource specifications and best practices
+
+---
+# API version specifies which Kubernetes API version this manifest uses
+# v1 is the stable version for Pod objects
+apiVersion: v1
+
+# Kind specifies the type of Kubernetes object being created
+# Pod is the smallest deployable unit in Kubernetes
+kind: Pod
+
+# Metadata contains information about the pod (name, namespace, labels, etc.)
+metadata:
+  # Name of the pod - must be unique within a namespace
+  name: sample-app-pod
+
+  # Namespace where the pod will be created (default is 'default')
+  # Namespaces are used to organize and isolate resources in a cluster
+  namespace: default
+
+  # Labels are key-value pairs used to organize and select Kubernetes objects
+  # They are used for grouping, selecting, and identifying resources
+  labels:
+    # Application name label - helps identify the application
+    app: sample-app
+
+    # Version label - useful for managing different versions of the application
+    version: "1.0"
+
+    # Environment label - indicates the deployment environment
+    environment: development
+
+    # Tier label - indicates which tier of the application this pod belongs to
+    tier: backend
+
+  # Annotations are key-value pairs for storing additional non-identifying information
+  # Unlike labels, annotations are not used for selection but for documentation and tooling
+  annotations:
+    # Description of what this pod does
+    description: "This is a sample pod demonstrating Kubernetes manifest structure"
+
+    # Author or team information
+    author: "DevOps Team"
+
+    # Date of creation
+    created-date: "2025-12-22"
+
+# Spec defines the desired state and configuration of the pod
+spec:
+  # RestartPolicy determines what happens when a container exits
+  # Options: Always (default), OnFailure, Never
+  # "Always" means Kubernetes will always restart the container if it exits
+  restartPolicy: Always
+
+  # TerminationGracePeriodSeconds is the time Kubernetes waits before force-killing the pod
+  # Useful for graceful shutdown of applications (e.g., finishing pending requests)
+  terminationGracePeriodSeconds: 30
+
+  # ImagePullSecrets specifies which secret to use for pulling container images
+  # Useful when using private container registries that require authentication
+  # imagePullSecrets:
+  #   - name: docker-registry-secret
+
+  # Containers is a list of containers to run within this pod
+  # A pod can contain multiple containers that share network namespace
+  containers:
+    # First container specification
+    - name: app-container
+
+      # Image specifies the container image to use
+      # Format: [registry/]repository[:tag]
+      # If no tag is specified, 'latest' is assumed
+      image: nginx:latest
+
+      # ImagePullPolicy defines how the image should be pulled
+      # Options: Always, Never, IfNotPresent (default)
+      # "IfNotPresent" means pull only if the image is not already on the node
+      imagePullPolicy: IfNotPresent
+
+      # Ports exposes ports from the container
+      # This is mainly for documentation; actual port exposure depends on service configuration
+      ports:
+        - name: http
+          # Container port number
+          containerPort: 80
+
+          # Protocol used (TCP, UDP)
+          protocol: TCP
+
+        - name: https
+          containerPort: 443
+          protocol: TCP
+
+      # Environment variables passed to the container
+      # These are key-value pairs available inside the container
+      env:
+        - name: APP_NAME
+          value: "sample-app"
+
+        - name: LOG_LEVEL
+          value: "INFO"
+
+        # Using valueFrom to get values from ConfigMap or Secret
+        - name: DATABASE_HOST
+          valueFrom:
+            # Reference a value from a ConfigMap
+            configMapKeyRef:
+              name: app-config
+              key: db_host
+
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            # Reference a value from a Secret (for sensitive data)
+            secretKeyRef:
+              name: db-secret
+              key: password
+
+      # Resources define CPU and memory requests/limits
+      # Requests: minimum resources guaranteed to the container
+      # Limits: maximum resources the container can use
+      resources:
+        # Requests ensure the pod is scheduled on nodes with enough resources
+        requests:
+          # CPU in millicores (1000m = 1 CPU)
+          cpu: 100m
+
+          # Memory in bytes, with units like Mi (Mebibytes), Gi (Gibibytes)
+          memory: 128Mi
+
+        # Limits prevent containers from consuming unlimited resources
+        # If a container exceeds limits, it may be terminated (OOMKilled for memory)
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+      # Liveliness probe checks if the container is running
+      # If the check fails repeatedly, Kubernetes restarts the container
+      livenessProbe:
+        # HTTP probe makes HTTP requests to check if the app is alive
+        httpGet:
+          path: /health
+          port: 80
+
+        # Delay before the first probe is performed (in seconds)
+        initialDelaySeconds: 15
+
+        # Interval between probe attempts (in seconds)
+        periodSeconds: 20
+
+        # Timeout for each probe attempt (in seconds)
+        timeoutSeconds: 5
+
+        # Number of consecutive failures before marking container as unhealthy
+        failureThreshold: 3
+
+      # Readiness probe checks if the container is ready to receive traffic
+      # If the check fails, the container is removed from service endpoints
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: 80
+
+        initialDelaySeconds: 10
+
+        periodSeconds: 10
+
+        timeoutSeconds: 5
+
+        # Number of consecutive successes required to mark container as ready
+        successThreshold: 1
+
+        failureThreshold: 3
+
+      # Volume mounts connect volumes to the container filesystem
+      # Allows sharing data between containers or persisting data
+      volumeMounts:
+        - name: config-volume
+          # Path inside the container where the volume will be mounted
+          mountPath: /etc/config
+
+          # If true, the mounted volume is read-only
+          readOnly: true
+
+        - name: log-volume
+          mountPath: /var/log/app
+
+      # Security context defines security settings for the container
+      securityContext:
+        # Run the container as a specific user ID (non-root is recommended)
+        runAsUser: 1000
+
+        # Prevent the container from running as root
+        runAsNonRoot: true
+
+        # Allow read-only filesystem (optional but recommended)
+        readOnlyRootFilesystem: false
+
+        # Prevent privilege escalation
+        allowPrivilegeEscalation: false
+
+        # Capabilities to add/drop for better security
+        capabilities:
+          drop:
+            - ALL
+          add:
+            - NET_BIND_SERVICE
+
+      # Lifecycle hooks execute actions at container lifecycle events
+      lifecycle:
+        # postStart runs after the container starts
+        postStart:
+          exec:
+            command: ["/bin/sh", "-c", "echo 'Container started' > /tmp/start.txt"]
+
+        # preStop runs before the container is terminated
+        preStop:
+          exec:
+            command: ["/bin/sh", "-c", "sleep 15"]
+
+  # Volumes define storage that can be mounted into containers
+  # Various types: emptyDir, configMap, secret, persistentVolumeClaim, etc.
+  volumes:
+    # ConfigMap volume - mounts configuration data from a ConfigMap
+    - name: config-volume
+      configMap:
+        name: app-config
+        # Default file permissions (octal)
+        defaultMode: 0644
+
+    # EmptyDir volume - temporary storage that persists for the pod's lifetime
+    # Deleted when the pod is terminated
+    - name: log-volume
+      emptyDir:
+        # Maximum size allowed (optional)
+        sizeLimit: 1Gi
+
+  # Node affinity and pod affinity rules for pod scheduling
+  # These rules control which nodes the pod can be scheduled on
+  affinity:
+    # Node affinity rules
+    nodeAffinity:
+      # requiredDuringSchedulingIgnoredDuringExecution: hard requirements
+      # preferredDuringSchedulingIgnoredDuringExecution: soft preferences
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                  - app-node
+
+  # Tolerations allow the pod to be scheduled on nodes with specific taints
+  # Taints prevent pods from being scheduled unless they tolerate the taint
+  # tolerations:
+  #   - key: dedicated
+  #     operator: Equal
+  #     value: app-server
+  #     effect: NoSchedule
+
+  # Service account specifies which service account the pod uses
+  # Service accounts provide identity for pods to interact with the API
+  serviceAccountName: default
+
+---
+# Example: Deployment (recommended instead of Pod for production)
+# This section shows how to create a deployment that manages pods
+
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+  name: sample-app-deployment
+  namespace: default
+  labels:
+    app: sample-app
+
+spec:
+  # Number of pod replicas to create and maintain
+  replicas: 3
+
+  # Selector to identify pods managed by this deployment
+  selector:
+    matchLabels:
+      app: sample-app
+
+  # Strategy for rolling updates
+  strategy:
+    # RollingUpdate: gradually replace old pods with new ones
+    # Recreate: delete all old pods before creating new ones
+    type: RollingUpdate
+    rollingUpdate:
+      # Maximum number of new pods that can be created at once
+      maxSurge: 1
+
+      # Maximum number of pods that can be unavailable at once
+      maxUnavailable: 0
+
+  # Pod template specification (identical to the Pod spec above)
+  template:
+    metadata:
+      labels:
+        app: sample-app
+        version: "1.0"
+
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: app-container
+          image: nginx:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              protocol: TCP
+
+---
+# Example: Service to expose the pod/deployment
+# Services provide stable network endpoints for pods
+
+apiVersion: v1
+
+kind: Service
+
+metadata:
+  name: sample-app-service
+  namespace: default
+
+spec:
+  # Type of service
+  # ClusterIP: internal-only (default)
+  # NodePort: exposes on node IP and port
+  # LoadBalancer: exposes via cloud load balancer
+  type: ClusterIP
+
+  # Selector to identify which pods this service routes to
+  selector:
+    app: sample-app
+
+  # Port mappings
+  ports:
+    - name: http
+      # Port exposed by the service
+      port: 80
+
+      # Target port on the pod
+      targetPort: 80
+
+      protocol: TCP
+
+---
+# Example: ConfigMap for configuration data
+
+apiVersion: v1
+
+kind: ConfigMap
+
+metadata:
+  name: app-config
+  namespace: default
+
+data:
+  # Key-value configuration pairs
+  db_host: "mongodb://localhost:27017"
+  db_name: "sample_app_db"
+  app_mode: "production"
+
+---
+# Example: Secret for sensitive data
+
+apiVersion: v1
+
+kind: Secret
+
+metadata:
+  name: db-secret
+  namespace: default
+
+# Type of secret
+type: Opaque
+
+data:
+  # Base64 encoded sensitive data
+  # Use: echo -n "password123" | base64
+  password: cGFzc3dvcmQxMjM=  # Base64 encoded "password123"
+  username: YWRtaW4=  # Base64 encoded "admin"
+
+---
+# Example: Horizontal Pod Autoscaler (HPA)
+# HPA automatically scales the number of pod replicas based on metrics
+# This example uses CPU utilization as the scaling metric
+
+apiVersion: autoscaling/v2
+
+kind: HorizontalPodAutoscaler
+
+metadata:
+  name: sample-app-hpa
+  namespace: default
+
+spec:
+  # ScaleTargetRef specifies which resource to scale
+  # This HPA will scale the Deployment named 'sample-app-deployment'
+  scaleTargetRef:
+    # API version of the target resource
+    apiVersion: apps/v1
+
+    # Kind of the target resource (Deployment, StatefulSet, ReplicaSet, etc.)
+    kind: Deployment
+
+    # Name of the target resource
+    name: sample-app-deployment
+
+  # Minimum number of replicas to maintain
+  # The deployment will always have at least this many pods
+  minReplicas: 2
+
+  # Maximum number of replicas allowed
+  # The deployment will never exceed this many pods
+  maxReplicas: 10
+
+  # Metrics used for scaling decisions
+  # Can have multiple metrics; HPA will consider all of them
+  metrics:
+    # CPU-based scaling metric
+    - type: Resource
+      resource:
+        # Name of the resource metric (cpu, memory)
+        name: cpu
+
+        # Target for the metric
+        target:
+          # AverageUtilization: scale based on average CPU percentage across pods
+          type: Utilization
+
+          # Target CPU utilization percentage
+          # If average CPU across pods exceeds this, HPA will scale up
+          # If it falls below, HPA will scale down
+          averageUtilization: 70
+
+    # Memory-based scaling metric
+    - type: Resource
+      resource:
+        name: memory
+
+        target:
+          type: Utilization
+
+          # Target memory utilization percentage
+          averageUtilization: 80
+
+  # Advanced behavior configuration for scaling up/down
+  behavior:
+    # Scale-up behavior (adding replicas)
+    scaleUp:
+      # StabilizationWindowSeconds: time window for evaluating scale-up decisions
+      # Prevents rapid fluctuations in pod count
+      stabilizationWindowSeconds: 60
+
+      # Policies for how quickly to scale up
+      policies:
+        - type: Percent
+          # Scale up by 100% (double the current replicas)
+          value: 100
+
+          # Apply this policy over a period of 60 seconds
+          periodSeconds: 60
+
+        - type: Pods
+          # Or scale up by adding 2 pods per periodSeconds
+          value: 2
+
+          periodSeconds: 60
+
+      # selectPolicy: which policy to use (Max, Min, Disabled)
+      # Max: select the policy that scales up the most
+      selectPolicy: Max
+
+    # Scale-down behavior (removing replicas)
+    scaleDown:
+      # Longer stabilization window to prevent thrashing
+      stabilizationWindowSeconds: 300
+
+      policies:
+        - type: Percent
+          # Scale down by 50% of current replicas
+          value: 50
+
+          periodSeconds: 60
+
+      selectPolicy: Min
+
+---
+# Example: Network Policy
+# NetworkPolicy controls the network traffic allowed to/from pods
+# Implements micro-segmentation and zero-trust networking
+
+apiVersion: networking.k8s.io/v1
+
+kind: NetworkPolicy
+
+metadata:
+  name: sample-app-network-policy
+  namespace: default
+
+spec:
+  # podSelector specifies which pods this policy applies to
+  podSelector:
+    matchLabels:
+      app: sample-app
+
+  # policyTypes specifies what types of traffic to control
+  # Options: Ingress (incoming), Egress (outgoing), or both
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # Ingress rules define which traffic is ALLOWED to reach the pod
+  # If no ingress rules are specified, all ingress traffic is denied
+  ingress:
+    # First ingress rule: allow traffic from frontend pods
+    - from:
+        # Allow traffic from pods with specific labels
+        - podSelector:
+            matchLabels:
+              app: frontend
+
+      # Ports to allow traffic on
+      ports:
+        - protocol: TCP
+          port: 80
+
+        - protocol: TCP
+          port: 443
+
+    # Second ingress rule: allow traffic from the same namespace
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: frontend
+
+      ports:
+        - protocol: TCP
+          port: 8080
+
+    # Third ingress rule: allow traffic from specific namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+
+      ports:
+        - protocol: TCP
+          port: 9090  # Prometheus metrics port
+
+    # Fourth ingress rule: allow traffic from external sources on specific IPs
+    - from:
+        - ipBlock:
+            # Allow traffic from this CIDR range
+            cidr: 10.0.0.0/8
+
+            # Except from these IPs (exclude specific IPs)
+            except:
+              - 10.1.1.1
+              - 10.1.1.2
+
+      ports:
+        - protocol: TCP
+          port: 443
+
+  # Egress rules define which traffic is ALLOWED to leave the pod
+  # If no egress rules are specified, all egress traffic is allowed
+  egress:
+    # First egress rule: allow traffic to database pods
+    - to:
+        - podSelector:
+            matchLabels:
+              app: database
+
+      ports:
+        - protocol: TCP
+          port: 27017  # MongoDB port
+
+    # Second egress rule: allow DNS traffic (required for service discovery)
+    - to:
+        - namespaceSelector: {}
+
+      ports:
+        - protocol: UDP
+          port: 53  # DNS port
+
+    # Third egress rule: allow traffic to external services (any destination)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+
+            # Except deny traffic to private ranges (optional security measure)
+            except:
+              - 169.254.169.254/32  # AWS metadata endpoint (block to increase security)
+
+      ports:
+        - protocol: TCP
+          port: 443
+
+        - protocol: TCP
+          port: 80
+
+---
+# Example: Network Policy - Deny All Traffic by Default
+# This is a restrictive policy that denies all traffic unless explicitly allowed
+# Use this as a base and add specific allow rules on top
+
+apiVersion: networking.k8s.io/v1
+
+kind: NetworkPolicy
+
+metadata:
+  name: default-deny-all
+  namespace: default
+
+spec:
+  # Apply to all pods in the namespace
+  podSelector: {}
+
+  # Deny all ingress traffic by default
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # No ingress rules = all ingress traffic is denied
+  # No egress rules = all egress traffic is denied
+
+---
+# Example: Network Policy - Allow Ingress from Load Balancer
+# Allows traffic from load balancer or ingress controller to reach the pods
+
+apiVersion: networking.k8s.io/v1
+
+kind: NetworkPolicy
+
+metadata:
+  name: allow-from-ingress
+  namespace: default
+
+spec:
+  # Apply to all backend pods
+  podSelector:
+    matchLabels:
+      tier: backend
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    # Allow traffic from ingress controller (usually in a specific namespace)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+
+      ports:
+        - protocol: TCP
+          port: 80
+
+        - protocol: TCP
+          port: 443
+
+    # Allow traffic from load balancer service
+    - from:
+        - podSelector:
+            matchLabels:
+              app: nginx-ingress
+
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Example: StorageClass for EBS Volumes
+# StorageClass defines the storage type and provisioning behavior
+# This example uses AWS EBS CSI provisioner for dynamic volume provisioning
+
+apiVersion: storage.k8s.io/v1
+
+kind: StorageClass
+
+metadata:
+  name: ebs-storage-class
+
+# Provisioner determines which volume plugin is used for provisioning
+# ebs.csi.aws.com is the AWS EBS CSI driver
+provisioner: ebs.csi.aws.com
+
+# Allow volumes to be expanded after creation
+allowVolumeExpansion: true
+
+# ReclaimPolicy determines what happens to the volume when PVC is deleted
+# Delete: volume is deleted (default for dynamic provisioning)
+# Retain: volume is kept (manual cleanup required)
+# Recycle: volume is scrubbed and made available for reuse
+reclaimPolicy: Delete
+
+# Parameters passed to the provisioner
+# These are AWS EBS specific parameters
+parameters:
+  # Volume type: gp3 (general purpose), io1 (provisioned IOPS), st1 (throughput), sc1 (cold)
+  type: gp3
+
+  # IOPS (Input/Output Operations Per Second) - for gp3 and io1
+  # gp3: 3000-16000, io1: 100-64000
+  iops: "3000"
+
+  # Throughput in MB/s - only for gp3 (125-1000 MB/s)
+  throughput: "125"
+
+  # Enable encryption at rest
+  encrypted: "true"
+
+  # KMS key ID for encryption (optional)
+  # kmsKeyId: arn:aws:kms:region:account-id:key/key-id
+
+# VolumeBindingMode controls when volume binding and provisioning occurs
+# Immediate: bind and provision immediately (default)
+# WaitForFirstConsumer: delay binding until pod using PVC is created
+volumeBindingMode: WaitForFirstConsumer
+
+---
+# Example: PersistentVolume (PV) - Static Provisioning
+# PersistentVolume is a piece of storage in the cluster
+# It has a lifecycle independent of any individual pod
+# This example uses AWS EBS for persistent storage
+
+apiVersion: v1
+
+kind: PersistentVolume
+
+metadata:
+  name: sample-app-pv
+  namespace: default
+
+spec:
+  # Capacity defines the storage amount available on this PV
+  capacity:
+    storage: 10Gi
+
+  # VolumeMode indicates the filesystem type
+  # Filesystem: mounts as filesystem (default)
+  # Block: raw block device (for databases, etc.)
+  volumeMode: Filesystem
+
+  # AccessModes define how the volume can be mounted
+  # ReadWriteOnce (RWO): volume can be mounted as read-write by a single node
+  # ReadOnlyMany (ROX): volume can be mounted as read-only by many nodes
+  # ReadWriteMany (RWX): volume can be mounted as read-write by many nodes
+  # Note: EBS volumes support only ReadWriteOnce
+  accessModes:
+    - ReadWriteOnce
+
+  # PersistentVolumeReclaimPolicy defines what happens when PVC is deleted
+  # Delete: delete the volume
+  # Retain: keep the volume and its contents (manual cleanup required)
+  # Recycle: scrub the volume and make available for reuse (deprecated)
+  persistentVolumeReclaimPolicy: Retain
+
+  # StorageClassName associates this PV with a StorageClass
+  # Used for dynamic provisioning and PVC binding
+  storageClassName: ebs-storage-class
+
+  # AWS EBS configuration for the volume
+  awsElasticBlockStore:
+    # volumeID is the EBS volume ID in AWS
+    # Format: vol-xxxxxxxxx
+    # Replace with your actual EBS volume ID created in AWS
+    # Can be found in AWS EC2 console > Volumes
+    volumeID: vol-xxxxxxxxx
+
+    # fsType specifies the filesystem type on the EBS volume
+    # Common options: ext4, xfs, ext3
+    fsType: ext4
+
+  # Optional: Node affinity to restrict PV to specific nodes
+  # nodeAffinity:
+  #   required:
+  #     nodeSelectorTerms:
+  #       - matchExpressions:
+  #           - key: topology.kubernetes.io/zone
+  #             operator: In
+  #             values:
+  #               - us-east-1a
+
+---
+# Example: PersistentVolumeClaim (PVC)
+# PVC is a request for storage by a user
+# Similar to how a pod requests compute resources (CPU, memory)
+# PVC requests specific storage size and access modes
+
+apiVersion: v1
+
+kind: PersistentVolumeClaim
+
+metadata:
+  name: sample-app-pvc
+  namespace: default
+
+spec:
+  # AccessModes specify how the volume will be used
+  # Must match the PV's supported access modes
+  accessModes:
+    - ReadWriteOnce
+
+  # StorageClassName determines which StorageClass to use
+  # If omitted, the default StorageClass is used
+  # For static provisioning with manual PV, this must match the PV's storageClassName
+  storageClassName: ebs-storage-class
+
+  # Resources define the storage request
+  # Similar to container resource requests
+  resources:
+    requests:
+      # Storage size requested (e.g., 10Gi, 100Mi, 1Ti)
+      storage: 10Gi
+
+  # Optional: Selector to match specific PVs by labels
+  # selector:
+  #   matchLabels:
+  #     disktype: ssd
+
+---
+# Example: Deployment using EBS PVC
+# This deployment demonstrates how to use the PVC for persistent storage
+
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+  name: sample-app-deployment-with-ebs
+  namespace: default
+  labels:
+    app: sample-app-ebs
+
+spec:
+  # Number of replicas
+  # Important: EBS volumes support only ReadWriteOnce, so replicas should be 1
+  # To scale with persistent storage, use StatefulSet instead
+  replicas: 1
+
+  # Selector to identify pods managed by this deployment
+  selector:
+    matchLabels:
+      app: sample-app-ebs
+
+  # Strategy for rolling updates
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  # Pod template specification
+  template:
+    metadata:
+      labels:
+        app: sample-app-ebs
+        version: "1.0"
+
+    spec:
+      restartPolicy: Always
+
+      containers:
+        - name: app-container
+          image: nginx:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+
+          # Volume mounts attach volumes to container filesystem paths
+          volumeMounts:
+            # Mount the EBS volume to /data directory
+            - name: ebs-storage
+              mountPath: /data
+
+              # subPath allows mounting a subdirectory within the volume
+              # subPath: app-data
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+      # Volumes define storage that can be mounted into containers
+      volumes:
+        # PersistentVolumeClaim volume
+        # References an existing PVC in the same namespace
+        - name: ebs-storage
+          persistentVolumeClaim:
+            # Name of the PVC to use
+            claimName: sample-app-pvc
+
+            # readOnly determines if the volume is mounted as read-only (optional)
+            # readOnly: false
+
+---
+# Example: StatefulSet with EBS Volume
+# StatefulSet is preferred for applications requiring persistent storage
+# Provides stable network identity and ordered pod creation/deletion
+# Better for databases and stateful applications
+
+apiVersion: apps/v1
+
+kind: StatefulSet
+
+metadata:
+  name: sample-app-statefulset
+  namespace: default
+
+spec:
+  # Headless service for network identity
+  # Required for StatefulSet
+  serviceName: sample-app-headless-service
+
+  # Number of pod replicas
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: sample-app-stateful
+
+  # Pod template
+  template:
+    metadata:
+      labels:
+        app: sample-app-stateful
+
+    spec:
+      restartPolicy: Always
+
+      containers:
+        - name: app-container
+          image: nginx:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+
+          volumeMounts:
+            # Mount volume provided by volumeClaimTemplates
+            - name: data
+              mountPath: /data
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+  # VolumeClaimTemplates create PVCs for each pod replica
+  # Each pod gets its own PVC with the specified size
+  # These PVCs are automatically created and persist across pod recreations
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+
+      spec:
+        accessModes:
+          - ReadWriteOnce
+
+        storageClassName: ebs-storage-class
+
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+# Example: Headless Service for StatefulSet
+# Headless service provides stable DNS names for StatefulSet pods
+# Format: pod-name.service-name.namespace.svc.cluster.local
+
+apiVersion: v1
+
+kind: Service
+
+metadata:
+  name: sample-app-headless-service
+  namespace: default
+
+spec:
+  # ClusterIP: None makes this a headless service
+  # Headless services don't get a cluster IP
+  # Instead, direct DNS queries return pod IPs
+  clusterIP: None
+
+  selector:
+    app: sample-app-stateful
+
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
