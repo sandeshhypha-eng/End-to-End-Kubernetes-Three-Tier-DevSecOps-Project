@@ -49,7 +49,7 @@ root:
   level1:
     level2: value
     another: data
-
+    
 # ❌ WRONG - Tabs will break!
 root:
 	level1: value  # This tab character will cause error

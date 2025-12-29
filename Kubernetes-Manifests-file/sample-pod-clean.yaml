@@ -1,127 +1,15 @@
 ---
-apiVersion: v1
-kind: Pod
-metadata:
-  name: sample-app-pod
-  namespace: default
-  labels:
-    app: sample-app
-    version: "1.0"
-    environment: development
-    tier: backend
-  annotations:
-    description: "This is a sample pod demonstrating Kubernetes manifest structure"
-    author: "DevOps Team"
-    created-date: "2025-12-22"
-
-spec:
-  restartPolicy: Always
-  terminationGracePeriodSeconds: 30
-
-  containers:
-    - name: app-container
-      image: nginx:latest
-      imagePullPolicy: IfNotPresent
-      ports:
-        - name: http
-          containerPort: 80
-          protocol: TCP
-        - name: https
-          containerPort: 443
-          protocol: TCP
-
-      env:
-        - name: APP_NAME
-          value: "sample-app"
-        - name: LOG_LEVEL
-          value: "INFO"
-        - name: DATABASE_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: app-config
-              key: db_host
-        - name: DATABASE_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: db-secret
-              key: password
-
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-
-      livenessProbe:
-        httpGet:
-          path: /health
-          port: 80
-        initialDelaySeconds: 15
-        periodSeconds: 20
-        timeoutSeconds: 5
-        failureThreshold: 3
-
-      readinessProbe:
-        httpGet:
-          path: /ready
-          port: 80
-        initialDelaySeconds: 10
-        periodSeconds: 10
-        timeoutSeconds: 5
-        successThreshold: 1
-        failureThreshold: 3
-
-      volumeMounts:
-        - name: config-volume
-          mountPath: /etc/config
-          readOnly: true
-        - name: log-volume
-          mountPath: /var/log/app
-
-      securityContext:
-        runAsUser: 1000
-        runAsNonRoot: true
-        readOnlyRootFilesystem: false
-        allowPrivilegeEscalation: false
-        capabilities:
-          drop:
-            - ALL
-          add:
-            - NET_BIND_SERVICE
-
-      lifecycle:
-        postStart:
-          exec:
-            command: ["/bin/sh", "-c", "echo 'Container started' > /tmp/start.txt"]
-        preStop:
-          exec:
-            command: ["/bin/sh", "-c", "sleep 15"]
-
-  volumes:
-    - name: config-volume
-      configMap:
-        name: app-config
-        defaultMode: 0644
-    - name: log-volume
-      emptyDir:
-        sizeLimit: 1Gi
-
-  affinity:
-    nodeAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          preference:
-            matchExpressions:
-              - key: node-type
-                operator: In
-                values:
-                  - app-node
-
-  serviceAccountName: default
+# ============================================================================
+# KUBERNETES MANIFEST - COMPLETE APPLICATION STACK
+# ============================================================================
+# Order: Deployment → Service → ConfigMap → Secret → HPA → NetworkPolicies → Pod
+# This arrangement follows best practices for deployment and dependency order
+# ============================================================================
 
 ---
+# DEPLOYMENT - Core application workload
+# The deployment manages multiple pod replicas with the same configuration
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -129,6 +17,7 @@ metadata:
   namespace: default
   labels:
     app: sample-app
+    version: "1.0"
 
 spec:
   replicas: 3
@@ -150,20 +39,118 @@ spec:
 
     spec:
       restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
       containers:
         - name: app-container
           image: nginx:latest
           imagePullPolicy: IfNotPresent
+
           ports:
-            - containerPort: 80
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
               protocol: TCP
 
+          env:
+            - name: APP_NAME
+              value: "sample-app"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: DATABASE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: db_host
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: password
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+              readOnly: true
+            - name: log-volume
+              mountPath: /var/log/app
+
+          securityContext:
+            runAsUser: 1000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "echo 'Container started' > /tmp/start.txt"]
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+
+      volumes:
+        - name: config-volume
+          configMap:
+            name: app-config
+            defaultMode: 0644
+        - name: log-volume
+          emptyDir:
+            sizeLimit: 1Gi
+
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-type
+                    operator: In
+                    values:
+                      - app-node
+
+      serviceAccountName: default
+
 ---
+# SERVICE - Expose the deployment
+# Provides stable network endpoint for accessing pods
+
 apiVersion: v1
 kind: Service
 metadata:
   name: sample-app-service
   namespace: default
+  labels:
+    app: sample-app
 
 spec:
   type: ClusterIP
@@ -175,38 +162,63 @@ spec:
       port: 80
       targetPort: 80
       protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
 
 ---
+# CONFIGMAP - Store non-sensitive configuration data
+# Can be mounted as volumes or exposed as environment variables
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-config
   namespace: default
+  labels:
+    app: sample-app
 
 data:
   db_host: "mongodb://localhost:27017"
   db_name: "sample_app_db"
   app_mode: "production"
+  log_level: "INFO"
+  max_connections: "100"
 
 ---
+# SECRET - Store sensitive data like passwords, API keys, tokens
+# Data is base64 encoded (not encrypted by default - use sealed-secrets or vault in production)
+
 apiVersion: v1
 kind: Secret
 metadata:
   name: db-secret
   namespace: default
+  labels:
+    app: sample-app
 
 type: Opaque
 
 data:
+  # Base64 encoded values
+  # password123 = cGFzc3dvcmQxMjM=
+  # admin = YWRtaW4=
   password: cGFzc3dvcmQxMjM=
   username: YWRtaW4=
+  db_connection_string: bW9uZ29kYjovL2FkbWluOnBhc3N3b3JkMTIzQGxvY2FsaG9zdDoyNzAxNw==
 
 ---
+# HORIZONTAL POD AUTOSCALER - Auto-scale deployment based on metrics
+# Automatically adjusts the number of replicas based on CPU and memory utilization
+
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: sample-app-hpa
   namespace: default
+  labels:
+    app: sample-app
 
 spec:
   scaleTargetRef:
@@ -253,11 +265,16 @@ spec:
       selectPolicy: Min
 
 ---
+# NETWORK POLICY - Primary traffic control for sample-app
+# Controls ingress and egress traffic to/from pods with app: sample-app label
+
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: sample-app-network-policy
   namespace: default
+  labels:
+    app: sample-app
 
 spec:
   podSelector:
@@ -269,6 +286,7 @@ spec:
     - Egress
 
   ingress:
+    # Allow traffic from frontend pods
     - from:
         - podSelector:
             matchLabels:
@@ -279,6 +297,7 @@ spec:
         - protocol: TCP
           port: 443
 
+    # Allow traffic from frontend tier
     - from:
         - podSelector:
             matchLabels:
@@ -287,6 +306,7 @@ spec:
         - protocol: TCP
           port: 8080
 
+    # Allow traffic from monitoring namespace
     - from:
         - namespaceSelector:
             matchLabels:
@@ -295,6 +315,7 @@ spec:
         - protocol: TCP
           port: 9090
 
+    # Allow traffic from specific IP ranges
     - from:
         - ipBlock:
             cidr: 10.0.0.0/8
@@ -306,6 +327,7 @@ spec:
           port: 443
 
   egress:
+    # Allow traffic to database pods
     - to:
         - podSelector:
             matchLabels:
@@ -314,12 +336,14 @@ spec:
         - protocol: TCP
           port: 27017
 
+    # Allow DNS traffic (required for service discovery)
     - to:
         - namespaceSelector: {}
       ports:
         - protocol: UDP
           port: 53
 
+    # Allow traffic to external services
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -332,6 +356,10 @@ spec:
           port: 80
 
 ---
+# NETWORK POLICY - Default deny all traffic
+# Restrictive baseline policy that denies all traffic unless explicitly allowed
+# Apply this first, then add specific allow policies on top
+
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -345,11 +373,16 @@ spec:
     - Egress
 
 ---
+# NETWORK POLICY - Allow traffic from ingress controller
+# Allows ingress controller to route traffic to backend pods
+
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-from-ingress
   namespace: default
+  labels:
+    policy-type: ingress-allow
 
 spec:
   podSelector:
@@ -360,6 +393,7 @@ spec:
     - Ingress
 
   ingress:
+    # Allow traffic from ingress-nginx controller
     - from:
         - namespaceSelector:
             matchLabels:
@@ -370,6 +404,7 @@ spec:
         - protocol: TCP
           port: 443
 
+    # Allow traffic from nginx-ingress pods
     - from:
         - podSelector:
             matchLabels:
@@ -377,3 +412,79 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+
+---
+# STORAGE CLASS - Define storage type for dynamic provisioning
+# Uses AWS EBS CSI provisioner for creating EBS volumes on demand
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-storage-class
+  labels:
+    app: sample-app
+
+provisioner: ebs.csi.aws.com
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+
+parameters:
+  type: gp3
+  iops: "3000"
+  throughput: "125"
+  encrypted: "true"
+
+volumeBindingMode: WaitForFirstConsumer
+
+---
+# PERSISTENT VOLUME - Static EBS volume provisioning
+# Represents physical storage in the cluster
+# Must be created before the PVC
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: sample-app-pv
+  namespace: default
+  labels:
+    app: sample-app
+
+spec:
+  capacity:
+    storage: 10Gi
+
+  volumeMode: Filesystem
+
+  accessModes:
+    - ReadWriteOnce
+
+  persistentVolumeReclaimPolicy: Retain
+
+  storageClassName: ebs-storage-class
+
+  awsElasticBlockStore:
+    volumeID: vol-xxxxxxxxx
+    fsType: ext4
+
+---
+# PERSISTENT VOLUME CLAIM - Request storage from PV or StorageClass
+# This is what pods/deployments actually use to mount storage
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sample-app-pvc
+  namespace: default
+  labels:
+    app: sample-app
+
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  storageClassName: ebs-storage-class
+
+  resources:
+    requests:
+      storage: 10Gi
+
