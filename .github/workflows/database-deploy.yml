@@ -42,25 +42,17 @@ jobs:
         run: |
           kubectl config set-context --current --namespace=three-tier
 
-      - name: Apply PV, PVC, Secrets, Service, Deployment (in order)
+      - name: Apply all manifests in Database folder
         run: |
           set -euo pipefail
           BASE=Kubernetes-Manifests-file/Database
-          echo "Applying PV"
-          kubectl apply -f ${BASE}/pv.yaml || true
-          echo "Applying PVC"
-          kubectl apply -f ${BASE}/pvc.yaml
-          echo "Applying Secrets"
-          kubectl apply -f ${BASE}/secrets.yaml
-          echo "Applying Service"
-          kubectl apply -f ${BASE}/service.yaml
-          echo "Applying Deployment"
-          kubectl apply -f ${BASE}/deployment.yaml
+          echo "Repo contents:"; ls -la ${BASE} || true
 
-      - name: Wait for PVC to be Bound
-        run: |
-          # wait for the persistent volume claim used by mongodb
-          kubectl -n three-tier wait --for=condition=bound pvc/mongo-volume-claim --timeout=2m || true
+          echo "Applying all manifests under ${BASE} (recursively)"
+          # Apply every manifest under the Database directory. This will apply
+          # Secrets, Service, Deployment, PVCs, etc., depending on what's present.
+          # Use recursive apply so nested files are handled too.
+          kubectl -n three-tier apply -R -f "${BASE}"
 
       - name: Wait for mongodb rollout
         run: |
