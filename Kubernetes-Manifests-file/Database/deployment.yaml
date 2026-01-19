@@ -3,66 +3,57 @@ kind: Deployment
 metadata: 
   namespace: three-tier
   name: mongodb
+  labels:
+    app: mongodb
 spec: 
   replicas: 1
   selector:
     matchLabels:
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: mongodb
-        namespace: three-tier
-        labels:
-          app: mongodb
-      spec:
-        replicas: 1
-        selector:
-          matchLabels:
-            app: mongodb
-        template:
-          metadata:
-            labels:
-              app: mongodb
-          spec:
-            containers:
-            - name: mongodb
-              image: mongo:4.4.6
-              imagePullPolicy: IfNotPresent
-              ports:
-              - containerPort: 27017
-                name: mongodb
-              env:
-              - name: MONGO_INITDB_ROOT_USERNAME
-                valueFrom:
-                  secretKeyRef:
-                    name: mongo-sec
-                    key: username
-              - name: MONGO_INITDB_ROOT_PASSWORD
-                valueFrom:
-                  secretKeyRef:
-                    name: mongo-sec
-                    key: password
-              volumeMounts:
-              - name: mongo-data
-                mountPath: /data/db
-              readinessProbe:
-                exec:
-                  command:
-                    - sh
-                    - -c
-                    - mongo --eval 'db.adminCommand("ping")' || exit 1
-                initialDelaySeconds: 10
-                timeoutSeconds: 5
-                periodSeconds: 10
-              livenessProbe:
-                exec:
-                  command:
-                    - sh
-                    - -c
-                    - mongo --eval 'db.adminCommand("ping")' || exit 1
-                initialDelaySeconds: 30
-                timeoutSeconds: 5
-                periodSeconds: 20
-            volumes:
-            - name: mongo-data
-              emptyDir: {}
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:4.4.6
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 27017
+          name: mongodb
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongo-sec
+              key: username
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongo-sec
+              key: password
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+        readinessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+              - mongo --eval 'db.adminCommand("ping")' || exit 1
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+              - mongo --eval 'db.adminCommand("ping")' || exit 1
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+          periodSeconds: 20
+      volumes:
+      - name: mongo-data
+        emptyDir: {}
