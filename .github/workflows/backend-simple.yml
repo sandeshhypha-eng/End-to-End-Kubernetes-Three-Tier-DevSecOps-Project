@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'Application-Code/backend/**'
+      - 'Kubernetes-Manifests-file/Backend/**'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -96,20 +97,21 @@ jobs:
         with:
           version: 'v1.27.3'
 
-      - name: Install Helm
-        uses: azure/setup-helm@v1
-        with:
-          version: 'v3.12.0'
+      # Helm removed: deployment will use kubectl manifests from Kubernetes-Manifests-file/Backend
 
       - name: Update kubeconfig for EKS
         run: |
           aws eks update-kubeconfig --name dev --region ap-south-1
 
+      - name: Ensure namespace exists
+        run: |
+          kubectl get namespace three-tier >/dev/null 2>&1 || kubectl create namespace three-tier
+
       - name: Set kubectl context namespace
         run: |
           kubectl config set-context --current --namespace=three-tier
 
-      - name: Deploy backend (Helm chart if present, otherwise kubectl)
+      - name: Deploy backend (kubectl manifests)
         run: |
           set -euo pipefail
           if [ -n "${{ github.event.inputs.image_tag }}" ]; then
@@ -118,35 +120,24 @@ jobs:
             IMAGE_TAG="${{ github.sha }}"
           fi
           IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/backend"
-          CHART_DIR=./charts/backend
           # ONLY deploy manifests from this exact directory
           MANIFEST_DIR="Kubernetes-Manifests-file/Backend"
 
-          if [ -d "$CHART_DIR" ]; then
-            echo "Found Helm chart at $CHART_DIR — deploying with Helm"
-            helm upgrade --install backend "$CHART_DIR" \
-              --namespace three-tier --create-namespace \
-              --set image.repository=${IMAGE_REPO} \
-              --set image.tag=${IMAGE_TAG} \
-              --wait --timeout 3m
-          else
-            echo "Helm chart not found at $CHART_DIR — deploying manifests from $MANIFEST_DIR"
-            if [ ! -d "$MANIFEST_DIR" ]; then
-              echo "Expected manifest directory '$MANIFEST_DIR' not found. Failing the job so you can add manifests to that path."
-              exit 1
-            fi
-
-            echo "Repo contents:"; ls -la "$MANIFEST_DIR" || true
-            kubectl -n three-tier apply -R -f "$MANIFEST_DIR"
-            # Wait for the backend deployment named 'api' (as in the repo) to roll out.
-            kubectl -n three-tier rollout status deployment/api --timeout=3m || (
-              echo "Backend rollout failed or timed out; fetching events" &&
-              kubectl -n three-tier get pods -l role=api -o wide &&
-              kubectl -n three-tier describe deployment api &&
-              kubectl -n three-tier get events --sort-by='.lastTimestamp' &&
-              exit 1
-            )
+          if [ ! -d "$MANIFEST_DIR" ]; then
+            echo "Expected manifest directory '$MANIFEST_DIR' not found. Failing the job so you can add manifests to that path."
+            exit 1
           fi
+
+          echo "Repo contents:"; ls -la "$MANIFEST_DIR" || true
+          kubectl -n three-tier apply -R -f "$MANIFEST_DIR"
+          # Wait for the backend deployment named 'api' (as in the repo) to roll out.
+          kubectl -n three-tier rollout status deployment/api --timeout=3m || (
+            echo "Backend rollout failed or timed out; fetching events" &&
+            kubectl -n three-tier get pods -l role=api -o wide &&
+            kubectl -n three-tier describe deployment api &&
+            kubectl -n three-tier get events --sort-by='.lastTimestamp' &&
+            exit 1
+          )
 
 # Notes:
 # - Required secrets if using Docker Hub for push: DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD

@@ -35,7 +35,7 @@ The `Kubernetes-Manifests-Files` directory holds Kubernetes manifests for deploy
 🛠️ **Tools Explored:**
 - Terraform & AWS CLI for AWS infrastructure
 - Jenkins, Sonarqube, Terraform, Kubectl, and more for CI/CD setup
-- Helm, Prometheus, and Grafana for Monitoring
+ - Prometheus and Grafana for Monitoring
 - ArgoCD for GitOps practices
 
 🚢 **High-Level Overview:**
@@ -43,7 +43,7 @@ The `Kubernetes-Manifests-Files` directory holds Kubernetes manifests for deploy
 - Jenkins deployment with AWS integration
 - EKS Cluster creation & Load Balancer configuration
 - Private ECR repositories for secure image management
-- Helm charts for efficient monitoring setup
+ - Prometheus and Grafana for Monitoring
 - GitOps with ArgoCD - the cherry on top!
 
 📈 **The journey covered everything from setting up tools to deploying a Three-Tier app, ensuring data persistence, and implementing CI/CD pipelines.**
