@@ -119,7 +119,8 @@ jobs:
           fi
           IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/backend"
           CHART_DIR=./charts/backend
-          MANIFEST_DIR=Kubernetes-Manifests-file/Backend
+          # ONLY deploy manifests from this exact directory
+          MANIFEST_DIR="Kubernetes-Manifests-file/Backend"
 
           if [ -d "$CHART_DIR" ]; then
             echo "Found Helm chart at $CHART_DIR — deploying with Helm"
@@ -129,9 +130,14 @@ jobs:
               --set image.tag=${IMAGE_TAG} \
               --wait --timeout 3m
           else
-            echo "Helm chart not found at $CHART_DIR — falling back to kubectl apply of manifests in $MANIFEST_DIR"
-            echo "Repo contents:"; ls -la ${MANIFEST_DIR} || true
-            kubectl -n three-tier apply -R -f "${MANIFEST_DIR}"
+            echo "Helm chart not found at $CHART_DIR — deploying manifests from $MANIFEST_DIR"
+            if [ ! -d "$MANIFEST_DIR" ]; then
+              echo "Expected manifest directory '$MANIFEST_DIR' not found. Failing the job so you can add manifests to that path."
+              exit 1
+            fi
+
+            echo "Repo contents:"; ls -la "$MANIFEST_DIR" || true
+            kubectl -n three-tier apply -R -f "$MANIFEST_DIR"
             # Wait for the backend deployment named 'api' (as in the repo) to roll out.
             kubectl -n three-tier rollout status deployment/api --timeout=3m || (
               echo "Backend rollout failed or timed out; fetching events" &&
