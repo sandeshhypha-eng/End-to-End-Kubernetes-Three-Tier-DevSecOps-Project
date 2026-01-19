@@ -109,7 +109,7 @@ jobs:
         run: |
           kubectl config set-context --current --namespace=three-tier
 
-      - name: Deploy with Helm chart
+      - name: Deploy backend (Helm chart if present, otherwise kubectl)
         run: |
           set -euo pipefail
           if [ -n "${{ github.event.inputs.image_tag }}" ]; then
@@ -118,12 +118,29 @@ jobs:
             IMAGE_TAG="${{ github.sha }}"
           fi
           IMAGE_REPO="${{ secrets.DOCKERHUB_USERNAME }}/backend"
-          echo "Deploying backend Helm chart with image: ${IMAGE_REPO}:${IMAGE_TAG}"
-          helm upgrade --install backend ./charts/backend \
-            --namespace three-tier --create-namespace \
-            --set image.repository=${IMAGE_REPO} \
-            --set image.tag=${IMAGE_TAG} \
-            --wait --timeout 3m
+          CHART_DIR=./charts/backend
+          MANIFEST_DIR=Kubernetes-Manifests-file/Backend
+
+          if [ -d "$CHART_DIR" ]; then
+            echo "Found Helm chart at $CHART_DIR — deploying with Helm"
+            helm upgrade --install backend "$CHART_DIR" \
+              --namespace three-tier --create-namespace \
+              --set image.repository=${IMAGE_REPO} \
+              --set image.tag=${IMAGE_TAG} \
+              --wait --timeout 3m
+          else
+            echo "Helm chart not found at $CHART_DIR — falling back to kubectl apply of manifests in $MANIFEST_DIR"
+            echo "Repo contents:"; ls -la ${MANIFEST_DIR} || true
+            kubectl -n three-tier apply -R -f "${MANIFEST_DIR}"
+            # Wait for the backend deployment named 'api' (as in the repo) to roll out.
+            kubectl -n three-tier rollout status deployment/api --timeout=3m || (
+              echo "Backend rollout failed or timed out; fetching events" &&
+              kubectl -n three-tier get pods -l role=api -o wide &&
+              kubectl -n three-tier describe deployment api &&
+              kubectl -n three-tier get events --sort-by='.lastTimestamp' &&
+              exit 1
+            )
+          fi
 
 # Notes:
 # - Required secrets if using Docker Hub for push: DOCKERHUB_USERNAME, DOCKERHUB_PASSWORD
